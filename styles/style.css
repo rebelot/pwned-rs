@@ -1,0 +1,76 @@
+body {
+    background-color: #CCCCCC;
+}
+
+.chessboard {
+    position: relative;
+    border: 5px solid #333000;
+    margin: auto;
+    width: 640px;
+    height: 640px;
+}
+
+.tiles {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(8, 80px);
+    grid-template-rows: repeat(8, 80px);
+}
+
+.tile {
+    width: 80px;
+    height: 80px;
+    position: relative;
+}
+
+.dark {
+    background-color: #b58863;
+}
+
+.light {
+    background-color: #f0d9b5;
+}
+
+.dark-move {
+    background-color: #cf6649;
+}
+
+.light-move {
+    background-color: #fbbcaa;
+}
+
+/* Movable pieces */
+.piece {
+    position: absolute;
+    width: 70px;
+    height: 70px;
+    cursor: grab;
+    transition: transform 0.2s;
+}
+
+.label {
+    font-size: 15px;
+    font-weight: bold;
+    font-family: 'Courier New', Courier, monospace;
+    position: absolute;
+    color: #333000;
+}
+
+.number {
+    top: 0px;
+    left: 2px;
+}
+
+.letter {
+    bottom: 0px;
+    right: 2px;
+}
+
+/* .arrow { */
+/*     position: absolute; */
+/*     top: 0; */
+/*     left: 0; */
+/*     width: 100%; */
+/*     height: 100%; */
+/*     pointer-events: none; */
+/* } */

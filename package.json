@@ -1,0 +1,19 @@
+{
+  "name": "tangle-rs",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "eslint": "^9.13.0",
+    "globals": "^15.11.0"
+  },
+  "dependencies": {
+    "tangle-rs": "file:pkg"
+  }
+}
