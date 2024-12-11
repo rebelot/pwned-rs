@@ -9,8 +9,8 @@ mod bitboards;
 mod consts;
 mod gamestate;
 mod moves;
-mod pieces;
 mod rays;
+mod letterbox;
 
 #[derive(serde::Serialize)]
 pub enum PieceEnum {
@@ -50,7 +50,7 @@ mod tests {
     fn legal_moves(b: &mut Bencher) {
         let mut board =
 // rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
-            gamestate::Board::new("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+            gamestate::Game::new("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
         b.iter(|| board.calc_legal_moves())
     }
 
@@ -60,5 +60,10 @@ mod tests {
             "{}",
             serde_json::to_string_pretty(&(PieceEnum::WhitePawn as isize)).unwrap()
         );
+    }
+    #[test]
+    fn it_panics() {
+        let x = "asdf";
+        panic!("aaaaah! {x}");
     }
 }

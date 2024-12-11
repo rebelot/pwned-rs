@@ -31,15 +31,15 @@ impl Rays {
 
 #[derive(Clone, Copy)]
 pub struct Ray {
-    pub pos: u64,
-    pub neg: u64,
+    pub positive: u64,
+    pub negative: u64,
     pub line: u64,
 }
 impl Ray {
     pub const fn default() -> Self {
         Self {
-            pos: 0,
-            neg: 0,
+            positive: 0,
+            negative: 0,
             line: 0,
         }
     }
@@ -50,20 +50,20 @@ pub static RAYS: [Rays; 64] = {
     let mut rays = [Rays::default(); 64];
     while i < 64 {
         // negatives
-        rays[i].rays[0].neg = scan_ray::<N, ONES>(1 << i, ONES);
-        rays[i].rays[1].neg = scan_ray::<W, NOT_A_FILE>(1 << i, ONES);
-        rays[i].rays[2].neg = scan_ray::<NE, NOT_H_FILE>(1 << i, ONES);
-        rays[i].rays[3].neg = scan_ray::<NW, NOT_A_FILE>(1 << i, ONES);
+        rays[i].rays[0].negative = scan_ray::<N, ONES>(1 << i, ONES);
+        rays[i].rays[1].negative = scan_ray::<W, NOT_A_FILE>(1 << i, ONES);
+        rays[i].rays[2].negative = scan_ray::<NE, NOT_H_FILE>(1 << i, ONES);
+        rays[i].rays[3].negative = scan_ray::<NW, NOT_A_FILE>(1 << i, ONES);
         // positives
-        rays[i].rays[0].pos = scan_ray::<S, ONES>(1 << i, ONES);
-        rays[i].rays[1].pos = scan_ray::<E, NOT_H_FILE>(1 << i, ONES);
-        rays[i].rays[2].pos = scan_ray::<SW, NOT_A_FILE>(1 << i, ONES);
-        rays[i].rays[3].pos = scan_ray::<SE, NOT_H_FILE>(1 << i, ONES);
+        rays[i].rays[0].positive = scan_ray::<S, ONES>(1 << i, ONES);
+        rays[i].rays[1].positive = scan_ray::<E, NOT_H_FILE>(1 << i, ONES);
+        rays[i].rays[2].positive = scan_ray::<SW, NOT_A_FILE>(1 << i, ONES);
+        rays[i].rays[3].positive = scan_ray::<SE, NOT_H_FILE>(1 << i, ONES);
 
-        rays[i].rays[0].line = rays[i].rays[0].pos | rays[i].rays[0].neg;
-        rays[i].rays[1].line = rays[i].rays[1].pos | rays[i].rays[1].neg;
-        rays[i].rays[2].line = rays[i].rays[2].pos | rays[i].rays[2].neg;
-        rays[i].rays[3].line = rays[i].rays[3].pos | rays[i].rays[3].neg;
+        rays[i].rays[0].line = rays[i].rays[0].positive | rays[i].rays[0].negative;
+        rays[i].rays[1].line = rays[i].rays[1].positive | rays[i].rays[1].negative;
+        rays[i].rays[2].line = rays[i].rays[2].positive | rays[i].rays[2].negative;
+        rays[i].rays[3].line = rays[i].rays[3].positive | rays[i].rays[3].negative;
 
         rays[i].rankfiles = rays[i].rays[0].line | rays[i].rays[1].line;
         rays[i].diagonals = rays[i].rays[2].line | rays[i].rays[3].line;
@@ -110,21 +110,21 @@ const fn ray_intersect<const R: usize>(sq1: usize, sq2: usize) -> u64 {
     let r2_0 = &RAYS[sq2].rays[R];
     let r2_1 = &RAYS[sq2].rays[R + 1];
 
-    let x = r1_0.pos & r2_0.neg;
+    let x = r1_0.positive & r2_0.negative;
     if x != 0 {
         return x;
     };
 
-    let x = r1_0.neg & r2_0.pos;
+    let x = r1_0.negative & r2_0.positive;
     if x != 0 {
         return x;
     };
 
-    let x = r1_1.neg & r2_1.pos;
+    let x = r1_1.negative & r2_1.positive;
     if x != 0 {
         return x;
     };
-    r1_1.pos & r2_1.neg
+    r1_1.positive & r2_1.negative
 }
 
 #[inline]

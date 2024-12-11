@@ -1,17 +1,69 @@
-use std::simd::{self, num::SimdUint};
-
-use crate::pieces::*;
+use serde::ser::{SerializeTuple, Serializer};
+use serde::{Deserialize, Serialize};
+use std::simd::{self, num::SimdUint, u64x8};
 
 #[derive(Debug)]
 pub struct BitBoards {
-    pub whites: u64,
-    pub blacks: u64,
     pub pawns: u64,
-    pub rooks: u64,
-    pub bishops: u64,
     pub knights: u64,
+    pub bishops: u64,
+    pub rooks: u64,
     pub queens: u64,
     pub kings: u64,
+    pub whites: u64,
+    pub blacks: u64,
+}
+
+impl Serialize for BitBoards {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        #[derive(Serialize)]
+        struct Piece {
+            kind: String,
+            color: String,
+        }
+
+        let mut ser = serializer.serialize_tuple(64)?;
+        apply!(self.pawns & self.whites, i -> {
+            ser.serialize_element(&(i, Piece { kind: String::from("pawn"), color: String::from("white")}))?;
+        });
+        apply!(self.knights & self.whites, i -> {
+            ser.serialize_element(&(i, Piece { kind: String::from("knight"), color: String::from("white")}))?;
+        });
+        apply!(self.bishops & self.whites, i -> {
+            ser.serialize_element(&(i, Piece { kind: String::from("bishop"), color: String::from("white")}))?;
+        });
+        apply!(self.rooks & self.whites, i -> {
+            ser.serialize_element(&(i, Piece { kind: String::from("rook"), color: String::from("white")}))?;
+        });
+        apply!(self.queens & self.whites, i -> {
+            ser.serialize_element(&(i, Piece { kind: String::from("queen"), color: String::from("white")}))?;
+        });
+        apply!(self.kings & self.whites, i -> {
+            ser.serialize_element(&(i, Piece { kind: String::from("king"), color: String::from("white")}))?;
+        });
+        apply!(self.pawns & self.blacks, i -> {
+            ser.serialize_element(&(i, Piece { kind: String::from("pawn"), color: String::from("black")}))?;
+        });
+        apply!(self.knights & self.blacks, i -> {
+            ser.serialize_element(&(i, Piece { kind: String::from("knight"), color: String::from("black")}))?;
+        });
+        apply!(self.bishops & self.blacks, i -> {
+            ser.serialize_element(&(i, Piece { kind: String::from("bishop"), color: String::from("black")}))?;
+        });
+        apply!(self.rooks & self.blacks, i -> {
+            ser.serialize_element(&(i, Piece { kind: String::from("rook"), color: String::from("black")}))?;
+        });
+        apply!(self.queens & self.blacks, i -> {
+            ser.serialize_element(&(i, Piece { kind: String::from("queen"), color: String::from("black")}))?;
+        });
+        apply!(self.kings & self.blacks, i -> {
+            ser.serialize_element(&(i, Piece { kind: String::from("king"), color: String::from("black")}))?;
+        });
+        ser.end()
+    }
 }
 
 #[inline(always)]
@@ -39,19 +91,19 @@ pub fn ms1b(bb: u64) -> u64 {
     1 << (63 - lzc(bb))
 }
 
-pub const u64x8_ones: simd::u64x8 = simd::u64x8::from_array([1; 8]);
-pub const u64x8_zeros: simd::u64x8 = simd::u64x8::from_array([0; 8]);
-const u64x8_63: simd::u64x8 = simd::u64x8::from_array([63; 8]);
+// pub const u64x8_ones: simd::u64x8 = simd::u64x8::from_array([1; 8]);
+// pub const u64x8_zeros: simd::u64x8 = simd::u64x8::from_array([0; 8]);
+// const u64x8_63: simd::u64x8 = simd::u64x8::from_array([63; 8]);
 
-#[inline(always)]
-pub fn ms1b_simd(bb: simd::u64x8) -> simd::u64x8 {
-    u64x8_ones << (u64x8_63 - bb.leading_zeros())
-}
+// #[inline(always)]
+// pub fn ms1b_simd(bb: simd::u64x8) -> simd::u64x8 {
+//     u64x8_ones << (u64x8_63 - bb.leading_zeros())
+// }
 
-#[inline(always)]
-pub fn ms1br(bb: u64) -> u64 {
-    ls1b(bb.reverse_bits())
-}
+// #[inline(always)]
+// pub fn ms1br(bb: u64) -> u64 {
+//     ls1b(bb.reverse_bits())
+// }
 
 #[inline(always)]
 pub const fn shift<const D: i8, const B: u64>(board: u64) -> u64 {
@@ -63,7 +115,7 @@ pub const fn shift<const D: i8, const B: u64>(board: u64) -> u64 {
 }
 
 impl BitBoards {
-    pub fn new(board: &[Option<Piece>]) -> Self {
+    pub fn new(position: &str) -> Self {
         let mut bitboard = BitBoards {
             whites: 0,
             blacks: 0,
@@ -74,41 +126,56 @@ impl BitBoards {
             queens: 0,
             kings: 0,
         };
-        board.iter().enumerate().for_each(|(i, square)| {
-            let mask = 1 << i;
-            if let Some(piece) = square {
-                match piece {
-                    Piece::Pawn(_) => bitboard.pawns |= mask,
-                    Piece::Rook(_) => bitboard.rooks |= mask,
-                    Piece::Bishop(_) => bitboard.bishops |= mask,
-                    Piece::Knight(_) => bitboard.knights |= mask,
-                    Piece::King(_) => bitboard.kings |= mask,
-                    Piece::Queen(_) => bitboard.queens |= mask,
-                };
-                match piece.color() {
-                    Color::White => bitboard.whites |= mask,
-                    Color::Black => bitboard.blacks |= mask,
-                };
-            }
+        position.split('/').enumerate().for_each(|(row, rank)| {
+            let mut file: usize = 0;
+            rank.chars().for_each(|c| {
+                if let Some(blanks) = c.to_digit(10) {
+                    file += blanks as usize;
+                } else {
+                    if c.is_uppercase() {
+                        bitboard.whites |= 1 << (row * 8 + file);
+                    } else {
+                        bitboard.blacks |= 1 << (row * 8 + file);
+                    };
+                    match c.to_ascii_lowercase() {
+                        'p' => bitboard.pawns |= 1 << (row * 8 + file),
+                        'n' => bitboard.knights |= 1 << (row * 8 + file),
+                        'b' => bitboard.bishops |= 1 << (row * 8 + file),
+                        'r' => bitboard.rooks |= 1 << (row * 8 + file),
+                        'q' => bitboard.queens |= 1 << (row * 8 + file),
+                        'k' => bitboard.kings |= 1 << (row * 8 + file),
+                        _ => {}
+                    };
+                    file += 1;
+                }
+            })
         });
-
         bitboard
     }
-    pub fn get_piece_bbs_mut(&mut self, piece: Piece) -> (&mut u64, &mut u64) {
-        (
-            match piece {
-                Piece::Pawn(_) => &mut self.pawns,
-                Piece::Rook(_) => &mut self.rooks,
-                Piece::Bishop(_) => &mut self.bishops,
-                Piece::Knight(_) => &mut self.knights,
-                Piece::King(_) => &mut self.kings,
-                Piece::Queen(_) => &mut self.queens,
-            },
-            match piece.color() {
-                Color::White => &mut self.whites,
-                Color::Black => &mut self.blacks,
-            },
-        )
+
+    pub fn get_color_bb_mut(&mut self, turn: bool) -> &mut u64 {
+        if turn {
+            return &mut self.whites;
+        }
+        &mut self.blacks
+    }
+
+    pub fn get_piece_bb_mut(&mut self, bb: u64) -> &mut u64 {
+        if self.pawns & bb != 0 {
+            &mut self.pawns
+        } else if self.knights & bb != 0 {
+            &mut self.knights
+        } else if self.bishops & bb != 0 {
+            &mut self.bishops
+        } else if self.rooks & bb != 0 {
+            &mut self.rooks
+        } else if self.queens & bb != 0 {
+            &mut self.queens
+        } else if self.kings & bb != 0 {
+            &mut self.kings
+        } else {
+            panic!("Given bitboard does not match any piece bitboard.");
+        }
     }
 
     pub fn to_string(board: u64) -> String {
@@ -151,7 +218,7 @@ impl BitBoards {
 }
 
 macro_rules! apply {
-    ($pieces:ident, $idx:ident -> $expr:expr) => {
+    ($pieces:expr, $idx:ident -> $expr:expr) => {
         let mut bb = $pieces;
         while bb != 0 {
             let $idx = bsf(bb) as usize;
@@ -255,8 +322,8 @@ mod tests {
         b.iter(|| ms1b(1 << 50))
     }
 
-    #[bench]
-    fn ms1b_2(b: &mut Bencher) {
-        b.iter(|| ms1br(1 << 50))
-    }
+    // #[bench]
+    // fn ms1b_2(b: &mut Bencher) {
+    //     b.iter(|| ms1br(1 << 50))
+    // }
 }

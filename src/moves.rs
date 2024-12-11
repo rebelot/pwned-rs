@@ -1,12 +1,13 @@
 use crate::bitboards::*;
 use crate::consts::*;
-use crate::pieces::*;
+// use crate::pieces::*;
 use crate::rays::*;
 
-pub fn gen_atk_moves(color: Color, bitboards: &BitBoards) -> [u64; 64] {
-    let (friends, foes, pawn_attacks): (u64, u64, [u64; 64]) = match color {
-        Color::White => (bitboards.whites, bitboards.blacks, WHITE_PAWN_ATTACKS),
-        Color::Black => (bitboards.blacks, bitboards.whites, BLACK_PAWN_ATTACKS),
+pub fn gen_atk_moves(color: bool, bitboards: &BitBoards) -> [u64; 64] {
+    let (friends, foes, pawn_attacks): (u64, u64, [u64; 64]) = if color {
+        (bitboards.whites, bitboards.blacks, WHITE_PAWN_ATTACKS)
+    } else {
+        (bitboards.blacks, bitboards.whites, BLACK_PAWN_ATTACKS)
     };
 
     let mut moves = [0; 64];
@@ -41,26 +42,26 @@ pub fn gen_atk_moves(color: Color, bitboards: &BitBoards) -> [u64; 64] {
 }
 
 pub fn gen_all_moves(
-    color: Color,
+    color: bool,
     bitboards: &BitBoards,
-    enpassant: Option<u8>,
+    enpassant: Option<usize>,
     castling: u64,
 ) -> [u64; 64] {
-    let (friends, foes, consts, pawn_moves): (u64, u64, Consts, fn(u64, u64, u64, &mut [u64])) =
-        match color {
-            Color::White => (
-                bitboards.whites,
-                bitboards.blacks,
-                WHITE_CONSTS,
-                white_pawn_moves,
-            ),
-            Color::Black => (
-                bitboards.blacks,
-                bitboards.whites,
-                BLACK_CONSTS,
-                black_pawn_moves,
-            ),
-        };
+    let friends: u64;
+    let foes: u64;
+    let consts: Consts;
+    let pawn_moves: fn(u64, u64, u64, &mut [u64]);
+    if color {
+        friends = bitboards.whites;
+        foes = bitboards.blacks;
+        consts = WHITE_CONSTS;
+        pawn_moves = white_pawn_moves;
+    } else {
+        friends = bitboards.blacks;
+        foes = bitboards.whites;
+        consts = BLACK_CONSTS;
+        pawn_moves = black_pawn_moves;
+    };
 
     let mut moves = [0; 64];
     let free_squares = !(friends ^ foes);
@@ -105,10 +106,14 @@ pub fn gen_all_moves(
     } else {
         // castling masks don't include the king (poor choice?), so other checks are subordinated
         // to "not in check" status.
-        if castling & consts.ks_castle & not_friends_or_attacked == consts.ks_castle {
+        if castling & consts.ks_castle & not_friends_or_attacked == consts.ks_castle
+            && friends & consts.ks_rook != 0
+        {
             moves[k] |= consts.ks_castle_k;
         }
-        if castling & consts.qs_castle & not_friends_or_attacked == consts.qs_castle {
+        if castling & consts.qs_castle & not_friends_or_attacked == consts.qs_castle
+            && friends & consts.qs_rook != 0
+        {
             moves[k] |= consts.qs_castle_k;
         }
     }
@@ -186,9 +191,10 @@ fn knight_attacks(pieces: u64, friends: u64, moves: &mut [u64; 64]) {
 
 #[inline(always)]
 pub fn line_attack(ray: &Ray, occ: u64) -> u64 {
-    let low = ms1b(ray.neg & occ | 1);
-    let high = ray.pos & occ;
-    ray.line & ((high - low) ^ high)
+    let low = ms1b(ray.negative & occ | 1);
+    let high = ray.positive & occ;
+    ray.line & ((high.wrapping_sub(low)) ^ high) // when there are no positive rays
+                                                 // (H File, 1st Rank) -> high = 0!
 }
 
 #[inline(always)]

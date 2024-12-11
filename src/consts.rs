@@ -1,5 +1,4 @@
 use crate::bitboards::*;
-use crate::pieces::Color;
 
 pub const N: i8 = -8;
 pub const NW: i8 = -9;
@@ -89,12 +88,6 @@ impl Consts {
         qs_rook: 1,
         direction: -1,
     };
-    pub fn new(color: Color) -> Self {
-        match color {
-            Color::White => Self::WHITE,
-            Color::Black => Self::BLACK,
-        }
-    }
 }
 
 #[inline(always)]
