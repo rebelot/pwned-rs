@@ -3,16 +3,37 @@ use crate::consts::*;
 // use crate::pieces::*;
 use crate::rays::*;
 
-pub fn gen_atk_moves(color: bool, bitboards: &BitBoards) -> [u64; 64] {
-    let (friends, foes, pawn_attacks): (u64, u64, [u64; 64]) = if color {
-        (bitboards.whites, bitboards.blacks, WHITE_PAWN_ATTACKS)
+pub fn gen_all_moves(
+    color: bool,
+    bitboards: &BitBoards,
+    enpassant: Option<usize>,
+    castling_rights_mask: u64,
+) -> [u64; 64] {
+    let friends: u64;
+    let foes: u64;
+    let consts: &Consts;
+    let pawn_moves: fn(u64, u64, u64, &mut [u64]);
+    let foes_pawn_attacks: &[u64; 64];
+    if color {
+        friends = bitboards.whites;
+        foes = bitboards.blacks;
+        consts = &WHITE_CONSTS;
+        pawn_moves = white_pawn_moves;
+        foes_pawn_attacks = &BLACK_PAWN_ATTACKS;
     } else {
-        (bitboards.blacks, bitboards.whites, BLACK_PAWN_ATTACKS)
+        friends = bitboards.blacks;
+        foes = bitboards.whites;
+        consts = &BLACK_CONSTS;
+        pawn_moves = black_pawn_moves;
+        foes_pawn_attacks = &WHITE_PAWN_ATTACKS;
     };
 
     let mut moves = [0; 64];
-    let occupancy = friends ^ (foes & !bitboards.kings);
+    let free_squares = !(friends ^ foes);
+    let occupancy = !free_squares;
 
+    let mut foes_attacks = [0; 64];
+    let atk_occupancy = occupancy ^ (friends & bitboards.kings);
     // 1. No need to intersect with actual targets or occupied squares:
     //      Every square seen by an enemy piece counts as "attacked"
     //      If an enemy piece "attacks" another enemy piece, it means that piece is "defended"
@@ -20,72 +41,41 @@ pub fn gen_atk_moves(color: bool, bitboards: &BitBoards) -> [u64; 64] {
     // 3. Sliding pieces "don't see" the enemy king: the whole ray is hot!
 
     diagonal_attacks(
-        friends & (bitboards.queens ^ bitboards.bishops),
+        foes & (bitboards.queens ^ bitboards.bishops),
         0,
-        occupancy,
-        &mut moves,
+        atk_occupancy,
+        &mut foes_attacks,
     );
     rankfile_attacks(
-        friends & (bitboards.queens ^ bitboards.rooks),
+        foes & (bitboards.queens ^ bitboards.rooks),
         0,
-        occupancy,
-        &mut moves,
+        atk_occupancy,
+        &mut foes_attacks,
     );
-    knight_attacks(friends & bitboards.knights, 0, &mut moves);
+    knight_attacks(foes & bitboards.knights, 0, &mut foes_attacks);
 
-    let pawns = bitboards.pawns & friends;
-    apply!(pawns, i -> moves[i] |= pawn_attacks[i]);
-    let k = bsf(bitboards.kings & friends) as usize;
-    moves[k] |= KING_MOVES[k];
+    apply!(bitboards.pawns & foes, i -> foes_attacks[i] |= foes_pawn_attacks[i]);
+    let k_sq = bsf(bitboards.kings & foes) as usize;
+    foes_attacks[k_sq] |= KING_MOVES[k_sq];
 
-    moves
-}
-
-pub fn gen_all_moves(
-    color: bool,
-    bitboards: &BitBoards,
-    enpassant: Option<usize>,
-    castling: u64,
-) -> [u64; 64] {
-    let friends: u64;
-    let foes: u64;
-    let consts: Consts;
-    let pawn_moves: fn(u64, u64, u64, &mut [u64]);
-    if color {
-        friends = bitboards.whites;
-        foes = bitboards.blacks;
-        consts = WHITE_CONSTS;
-        pawn_moves = white_pawn_moves;
-    } else {
-        friends = bitboards.blacks;
-        foes = bitboards.whites;
-        consts = BLACK_CONSTS;
-        pawn_moves = black_pawn_moves;
-    };
-
-    let mut moves = [0; 64];
-    let free_squares = !(friends ^ foes);
-    let occupancy = !free_squares;
-
-    let foes_attacks = gen_atk_moves(!color, bitboards);
     let attacked = foes_attacks.iter().fold(0, |acc, e| acc | *e);
 
-    let king = friends & bitboards.kings;
-    let k = bsf(king) as usize;
+    let king_bb = friends & bitboards.kings;
+    let k_sq = bsf(king_bb) as usize;
 
     let not_friends_or_attacked = !(friends | attacked);
-    moves[k] |= KING_MOVES[k] & not_friends_or_attacked;
+    moves[k_sq] |= KING_MOVES[k_sq] & not_friends_or_attacked;
 
     let mut check_mask = 0;
     let mut in_check = false;
-    if attacked & king != 0 {
+    if attacked & king_bb != 0 {
         in_check = true;
         let mut checker: u64 = 0;
-        let mut ch = 0;
+        let mut checker_square = 0;
         apply!(foes, i -> {
-            if foes_attacks[i] & king != 0 {
+            if foes_attacks[i] & king_bb != 0 {
                 checker |= 1 << i;
-                ch = i;
+                checker_square = i;
             }
         });
 
@@ -94,33 +84,33 @@ pub fn gen_all_moves(
             return moves;
         };
 
-        // pawns and knights can only be captured
+        // the checker can always be captured
         check_mask |= checker;
 
         if checker & (bitboards.queens ^ bitboards.bishops) != 0 {
-            check_mask |= DIAGONALS_INTERSECT[ch][k];
-        } // queens need both checks
+            check_mask |= DIAGONALS_INTERSECT[checker_square][k_sq];
+        } // no else: queens need both checks
         if checker & (bitboards.queens ^ bitboards.rooks) != 0 {
-            check_mask |= RANKFILES_INTERSECT[ch][k];
+            check_mask |= RANKFILES_INTERSECT[checker_square][k_sq];
         };
     } else {
         // castling masks don't include the king (poor choice?), so other checks are subordinated
         // to "not in check" status.
-        if castling & consts.ks_castle & not_friends_or_attacked == consts.ks_castle
+        if castling_rights_mask & consts.ks_castle & not_friends_or_attacked == consts.ks_castle
             && friends & consts.ks_rook != 0
         {
-            moves[k] |= consts.ks_castle_k;
+            moves[k_sq] |= consts.ks_castle_k;
         }
-        if castling & consts.qs_castle & not_friends_or_attacked == consts.qs_castle
+        if castling_rights_mask & consts.qs_castle & not_friends_or_attacked == consts.qs_castle
             && friends & consts.qs_rook != 0
         {
-            moves[k] |= consts.qs_castle_k;
+            moves[k_sq] |= consts.qs_castle_k;
         }
     }
 
     pawn_moves(
         friends & bitboards.pawns,
-        foes | enpassant.map(|i| 1 << i).unwrap_or(0),
+        foes ^ enpassant.map(|i| 1 << i).unwrap_or(0),
         free_squares,
         &mut moves,
     );
@@ -140,23 +130,23 @@ pub fn gen_all_moves(
     knight_attacks(friends & bitboards.knights, friends, &mut moves);
 
     diagonal_pins(
-        foes & (bitboards.queens ^ bitboards.bishops) & RAYS[k].diagonals,
+        foes & (bitboards.queens ^ bitboards.bishops) & RAYS[k_sq].diagonals,
         friends,
         foes,
-        k,
+        k_sq,
         &mut moves,
     );
     rankfile_pins(
-        foes & (bitboards.queens ^ bitboards.rooks) & RAYS[k].rankfiles,
+        foes & (bitboards.queens ^ bitboards.rooks) & RAYS[k_sq].rankfiles,
         friends,
         foes,
-        k,
+        k_sq,
         &mut moves,
     );
     if in_check {
         // Check mask restraints pieces moves to interposing or capture.
         // King moves are not affected, and only depend on `attacked` squares
-        let pieces = friends & !king;
+        let pieces = friends & !king_bb;
         apply!(pieces, i -> moves[i] &= check_mask);
     }
     moves

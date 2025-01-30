@@ -11,6 +11,27 @@ struct MoveResponse {
     updates: Vec<(usize, i32)>,
 }
 
+struct Move {
+    from_sq: usize,
+    from_bb: u64,
+    to_sq: usize,
+    to_bb: u64,
+    promotion: i32,
+}
+impl Move {
+    pub fn new(from_sq: usize, to_sq: usize) -> Self {
+        Move {
+            from_sq,
+            from_bb: 1 << from_sq,
+            to_sq,
+            to_bb: 1 << to_sq,
+            promotion: 0,
+        }
+    }
+}
+
+pub struct State {}
+
 #[wasm_bindgen]
 pub struct Game {
     bitboards: BitBoards,
@@ -20,16 +41,18 @@ pub struct Game {
     halfmove: u32,
     fullmove: u32,
     legal_moves: [u64; 64],
+    winner: Option<bool>,
+    stalemate: bool,
 }
 
 #[wasm_bindgen]
 impl Game {
     #[wasm_bindgen(constructor)]
-    pub fn new(fen: &str) -> Self {
+    pub fn from_fen(fen: &str) -> Self {
         let mut fields = fen.split_whitespace();
 
         let position = fields.next().unwrap();
-        let bitboards = BitBoards::new(position);
+        let bitboards = BitBoards::from_fen(position);
         let turn = match fields.next().unwrap() {
             "w" => true,
             "b" => false,
@@ -64,20 +87,21 @@ impl Game {
             halfmove,
             fullmove,
             legal_moves: [0; 64],
+            winner: None,
+            stalemate: false,
         };
 
         game.legal_moves = gen_all_moves(game.turn, &game.bitboards, enpassant, castling);
         game
     }
 
-    #[wasm_bindgen]
     pub fn turn(&mut self) {
         if !self.turn {
             self.fullmove += 1;
         }
         self.turn = !self.turn
     }
-    #[wasm_bindgen]
+
     pub fn calc_legal_moves(&mut self) {
         self.legal_moves = gen_all_moves(self.turn, &self.bitboards, self.enpassant, self.castling);
     }
@@ -86,16 +110,9 @@ impl Game {
     pub fn get_legal_moves(&mut self) -> Vec<Int32Array> {
         self.legal_moves
             .into_iter()
-            .map(|mut moves| {
+            .map(|moves| {
                 let mut v = vec![];
-                let mut i = 0;
-                while moves != 0 {
-                    if moves & 1 != 0 {
-                        v.push(i);
-                    }
-                    i += 1;
-                    moves >>= 1;
-                }
+                apply!(moves, i -> v.push(i as i32));
                 Int32Array::from(&v[..])
             })
             .collect()
@@ -104,6 +121,47 @@ impl Game {
     #[wasm_bindgen]
     pub fn send_board(&self) -> String {
         serde_json::to_string(&self.bitboards).expect("oh shit")
+    }
+
+    fn evaluate_move(&self, r#move: &Move) {
+        let mut response = MoveResponse {
+            updates: vec![(r#move.from_sq, r#move.to_sq as i32)],
+        };
+
+        let (consts, foes) = if self.turn {
+            (Consts::WHITE, self.bitboards.blacks)
+        } else {
+            (Consts::BLACK, self.bitboards.whites)
+        };
+
+        if self.bitboards.pawns & r#move.from_bb != 0 {
+            if let Some(enpassant) = self.enpassant {
+                if r#move.to_sq == enpassant {
+                    let captured_pawn = enpassant + (8 * consts.direction as usize);
+                    let captured_pawn_bb = 1 << captured_pawn;
+                    response.updates.push((captured_pawn, -1));
+                }
+            } else if (r#move.to_sq as i32 - r#move.from_sq as i32).abs() == 16 {
+                self.enpassant = Some((r#move.to_sq as i32 + 8 * consts.direction as i32) as usize);
+            } else if r#move.to_bb & consts.eighth_rank != 0 {
+                {}
+            }
+        } else if self.bitboards.kings & r#move.from_bb != 0 {
+            self.castling &= !(consts.ks_castle | consts.qs_castle);
+            match r#move.to_sq as i32 - r#move.from_sq as i32 {
+                2 => response
+                    .updates
+                    .push((r#move.to_sq + 1, r#move.to_sq as i32 - 1)),
+                -2 => response
+                    .updates
+                    .push((r#move.to_sq - 2, r#move.to_sq as i32 + 1)),
+                _ => {}
+            }
+        } else if consts.ks_rook & from_bb != 0 {
+            self.castling &= !consts.ks_castle;
+        } else if consts.qs_rook & from_bb != 0 {
+            self.castling &= !consts.qs_castle;
+        }
     }
 
     #[wasm_bindgen]

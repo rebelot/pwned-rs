@@ -1,4 +1,4 @@
-import { UIBoard, drawArrow } from "./ui_board.js";
+import UIBoard from "./ui_board.js";
 import init, { Game } from "../pkg/tangle_rs.js";
 
 async function run() {
@@ -20,7 +20,7 @@ async function run() {
         ui_board.drawArrows();
     });
 
-    window.globs = { board: board, uiboard: ui_board}
+    window.globs = { board: board, uiboard: ui_board }
 }
 
 run();
